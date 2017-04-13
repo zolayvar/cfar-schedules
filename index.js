@@ -8,7 +8,7 @@ var getPageWidth = function() {
 };
 
 var getPageHeight = function() {
-	return getPageWidth() * (11/8.5);
+	return getPageWidth()/1085 * 1404;
 };
 
 var getStartOfBlueBar = function() {
