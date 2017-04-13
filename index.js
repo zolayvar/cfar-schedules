@@ -4,7 +4,7 @@ Array.max = function( array ){
 
 var getPageWidth = function() {
 	//return $(window).width();
-	return 800;
+	return 1085; // for some reason this causes it to exactly fit a piece of pdf paper
 };
 
 var getPageHeight = function() {
@@ -29,7 +29,7 @@ var getRooms = function(num) {
 
 var getCanvas = function() {
 	//return new Snap(getPageWidth(), getPageHeight() * 4);
-	return new Raphael(0, 0, getPageWidth(), getPageHeight() * 4);
+	return new Raphael(0, 0, getPageWidth(), getPageHeight() * 4 * 36);
 };
 
 var isntParticipant = function(cell) {
@@ -65,8 +65,8 @@ var getBodyStartX = function() {
 	return getEndOfBlueBar();
 }
 
-var getBodyStartY = function(dayNumber) {
-	return (getPageWidth()/400) * 97 + dayNumber * getPageHeight();
+var getBodyStartY = function(dayNumber, participantNumber) {
+	return (getPageWidth()/400) * 97 + dayNumber * getPageHeight() + (4 * getPageHeight() * participantNumber);
 }
 
 var getBodyWidth = function() {
@@ -158,22 +158,24 @@ var getXColCoord = function(numCols, whichCol) {
 	return getBodyStartX() + getRoomWidth()/2 + (spacerWidth)*(whichCol + 1) + getRoomWidth() * whichCol;
 }
 
-var drawBackground = function(canvas) {
-	canvas.image('thursday.png', 0, 0, getPageWidth(), getPageHeight());
-	canvas.image('friday.png', 0, getPageHeight(), getPageWidth(), getPageHeight());
-	canvas.image('saturday.png', 0, getPageHeight() * 2, getPageWidth(), getPageHeight());
-	canvas.image('sunday.png', 0, getPageHeight() * 3, getPageWidth(), getPageHeight());
+var drawBackground = function(canvas, participantNumber) {
+	var yStart = participantNumber * 4 * getPageHeight();
+
+	canvas.image('thursday.png', 0, yStart, getPageWidth(), getPageHeight());
+	canvas.image('friday.png', 0, yStart + getPageHeight(), getPageWidth(), getPageHeight());
+	canvas.image('saturday.png', 0, yStart + getPageHeight() * 2, getPageWidth(), getPageHeight());
+	canvas.image('sunday.png', 0, yStart + getPageHeight() * 3, getPageWidth(), getPageHeight());
 };
 
-var drawRoomHeader = function(canvas, x, text, dayNumber) {
-	drawFaintOrangeRect(canvas, x - getRoomWidth()/2, getBodyStartY(dayNumber), getRoomWidth(), getRoomHeight());
-	var text = canvas.text(x, getBodyStartY(dayNumber) + getRoomHeight()/2, text);
+var drawRoomHeader = function(canvas, x, text, dayNumber, participantNumber) {
+	drawFaintOrangeRect(canvas, x - getRoomWidth()/2, getBodyStartY(dayNumber, participantNumber), getRoomWidth(), getRoomHeight());
+	var text = canvas.text(x, getBodyStartY(dayNumber, participantNumber) + getRoomHeight()/2, text);
 	text.attr({fill: 'white', 'font-weight': '500', 'font-size': getRoomFontSize()})
 }
 
-var drawRoomHeaders = function(canvas, num, dayNumber) {
+var drawRoomHeaders = function(canvas, num, dayNumber, participantNumber) {
 	for (var i = 0; i < num; i++) {
-		drawRoomHeader(canvas, getXColCoord(num, i), getRooms(num)[i], dayNumber);
+		drawRoomHeader(canvas, getXColCoord(num, i), getRooms(num)[i], dayNumber, participantNumber);
 	}
 }
 
@@ -196,7 +198,7 @@ var drawRowTime = function(canvas, row, cursor) {
 		.attr({fill: color, 'text-anchor': 'end', 'font-weight': '600', 'font-size': getTimeEndFontSize(), opacity: '.7'});
 }
 
-var drawMealText = function(canvas, row, cursor, numCols) {
+var drawMealText = function(canvas, row, cursor) {
 	canvas.text(getMealTextStartX(), cursor + getRowHeight(row)/2, row.specialText.toUpperCase())
 		.attr({fill: 'white', 'font-weight': '700', 'font-size': getMealTextFontSize(), 'text-anchor': 'start'});
 }
@@ -216,12 +218,18 @@ var getRowHeight = function(row) {
 	console.log('unknown row height');
 }
 
-var drawClassName = function(canvas, classTitle, teacher, cursorY, xCoord) {
+var drawClassName = function(canvas, classTitle, teacher, cursorY, xCoord, blobPredecessorPosition) {
 	var centerY = cursorY + getClassRowHeight()/2;
 
 	// Draw the pulsing blue light
+	if (blobPredecessorPosition) {
+		canvas.path('M' + blobPredecessorPosition.x + ',' + blobPredecessorPosition.y + 'L' + xCoord + ',' + centerY)
+			.attr({stroke: 'lightblue', 'stroke-width': '10'}).toFront();
+		blobPredecessorPosition.x = xCoord;
+		blobPredecessorPosition.y = centerY;
+	}
 	canvas.circle(xCoord, centerY, getClassNameFontSize()*1.2)
-		.attr({fill: 'rlightblue-white', stroke: 'none', opacity: .5});
+		.attr({fill: 'rlightblue-white', stroke: 'none', opacity: .5}).toBack();
 
 	// Draw the class name
 	var linebroke = false;
@@ -240,36 +248,38 @@ var drawClassName = function(canvas, classTitle, teacher, cursorY, xCoord) {
 		}
 	}
 	canvas.text(xCoord, centerY - getClassNameFontSize()/2, classTitle)
-		.attr({'font-weight': '600', 'font-size': getClassNameFontSize()});
+		.attr({'font-weight': '600', 'font-size': getClassNameFontSize()}).toFront();
 
 	// Draw the teacher name
 	canvas.text(xCoord, centerY + getTeacherFontSize()/2 + (linebroke ? getClassNameFontSize()*.75 : 0), teacher)
-		.attr({'font-weight': '600', 'font-size': getTeacherFontSize(), opacity: '.7'});
+		.attr({'font-weight': '600', 'font-size': getTeacherFontSize(), opacity: '.7'}).toFront();
 };
 
-var drawClassNames = function(canvas, row, cursor, numCols) {
+var drawClassNames = function(canvas, row, cursor, blobPredecessorPosition) {
 	for (var i = 0; i < row.classes.length; i++) {
+		if (row.participantInRoomNum >= 0 && i != row.participantInRoomNum) {
+			continue;
+		}
 		var classData = row.classes[i];
 		var className = classData.split('(')[0].trim();
 		var teacher = classData.indexOf('(') == -1 ? '' : classData.split('(')[1].split(')')[0].trim();
-		drawClassName(canvas, className, teacher, cursor, getXColCoord(numCols, i));
+		drawClassName(canvas, className, teacher, cursor, getXColCoord(4, i), blobPredecessorPosition);
 	}
 }
 
-var drawScheduleRow = function(canvas, row, cursor, numCols) {
-	console.log(row);
+var drawScheduleRow = function(canvas, row, cursor, blobPredecessorPosition) {
 	if (row.type == 'break') {
 		drawFaintOrangeRect(canvas, getStartOfBlueBar(), cursor, getBlueBarWidth(), getBreakRowHeight());
 	} else if (row.type == 'class') {
 		drawRowTime(canvas, row, cursor);
-		drawClassNames(canvas, row, cursor, numCols);
+		drawClassNames(canvas, row, cursor, blobPredecessorPosition);
 	} else if (row.type == 'lunch') {
 		drawFaintOrangeRect(canvas, getStartOfBlueBar(), cursor, getLunchWidth(), getLunchRowHeight());
-		drawMealText(canvas, row, cursor, numCols);
+		drawMealText(canvas, row, cursor);
 		drawRowTime(canvas, row, cursor);
 	} else if (row.type == 'dinner') {
 		drawFaintOrangeRect(canvas, getStartOfBlueBar(), cursor, getDinnerWidth(), getDinnerRowHeight());
-		drawMealText(canvas, row, cursor, numCols);
+		drawMealText(canvas, row, cursor);
 		drawRowTime(canvas, row, cursor);
 	} else if (row.type == '5MinClassChange') {
 		drawFaintOrangeRect(canvas, getStartOfBlueBar(), cursor, getBlueBarWidth(), get5MinClassChangeHeight());
@@ -278,37 +288,92 @@ var drawScheduleRow = function(canvas, row, cursor, numCols) {
 	return cursor + getRowHeight(row)
 }
 
+var drawAllRoomHeaders = function(canvas, participantNumber) {
+	for (var dayNumber = 0; dayNumber < 4; dayNumber++) {
+		drawRoomHeaders(canvas, 4, dayNumber, participantNumber);
+	}
+}
+
 var drawMasterScheduleDay = function(canvas, masterDaySchedule, dayNumber) {
-	// First, draw the room names
-	drawRoomHeaders(canvas, 4, dayNumber);
-
-
-	// Then, draw things by row
 	var cursor = getBodyStartY(dayNumber) + getRoomHeight() + getSpacerHeightBetweenRoomHeadersAndFirstClass();
 	for (var i = 0; i < masterDaySchedule.length; i++) {
-		cursor = drawScheduleRow(canvas, masterDaySchedule[i], cursor, 4);
+		cursor = drawScheduleRow(canvas, masterDaySchedule[i], cursor);
 	}
 }
 
 var drawMasterSchedule = function(canvas, masterSchedule) {
+	drawBackground(canvas);
+
+	// First, draw the room names
+	drawAllRoomHeaders(canvas);
+
 	drawMasterScheduleDay(canvas, masterSchedule.thursday, 0);
 	drawMasterScheduleDay(canvas, masterSchedule.friday, 1);
 	drawMasterScheduleDay(canvas, masterSchedule.saturday, 2);
 	drawMasterScheduleDay(canvas, masterSchedule.sunday, 3);
 };
 
-var loadCSV = function(canvas) {
-	$.ajax({
-		type: "GET",
-		url: "master_schedule.csv",
-		dataType: "text",
-		success: function(data) {
-			var scheduleCSVObject = $.csv.toObjects(data);
-			var masterSchedule = getMasterSchedule(scheduleCSVObject);
-			drawMasterSchedule(canvas, masterSchedule);
+var drawParticipantScheduleDay = function(canvas, participantScheduleDay, dayNumber, participantNumber) {
+	var cursor = getBodyStartY(dayNumber, participantNumber) + getRoomHeight() + getSpacerHeightBetweenRoomHeadersAndFirstClass();
+	var blobPredecessorPosition = {
+		x: getStartOfBlueBar() + getBlueBarWidth()/2, 
+		y: cursor + getClassRowHeight()/2
+	};
+	for (var i = 0; i < participantScheduleDay.length; i++) {
+		cursor = drawScheduleRow(canvas, participantScheduleDay[i], cursor, blobPredecessorPosition);
+	}
+}
+
+var drawParticipantCodes = function(canvas, participantNumber, participantCode) {
+	var x = getPageWidth() - 20;
+	for (var i = 0; i < 4; i++) {
+		var y = (getPageHeight()*4*participantNumber) + getPageHeight()*i + getPageHeight() - 20 - 18;
+		canvas.text(x, y, participantCode + ' ' + (i+1))
+			.attr({'text-anchor': 'end', fill: 'brown', 'font-size': '36', 'font-weight': '700'});
+	}
+}
+
+var drawParticipantSchedule = function(canvas, participantSchedule, participantNumber, participantCode) {
+	drawBackground(canvas, participantNumber);
+	drawAllRoomHeaders(canvas, participantNumber);
+	drawParticipantCodes(canvas, participantNumber, participantCode);
+
+	drawParticipantScheduleDay(canvas, participantSchedule.thursday, 0, participantNumber);
+	drawParticipantScheduleDay(canvas, participantSchedule.friday, 1, participantNumber);
+	drawParticipantScheduleDay(canvas, participantSchedule.saturday, 2, participantNumber);
+	drawParticipantScheduleDay(canvas, participantSchedule.sunday, 3, participantNumber);
+}
+
+var getParticipantScheduleDay = function(scheduleCSVObject, masterScheduleDay, participantCode) {
+	var participantScheduleDay = [];
+	for (var i = 0; i < masterScheduleDay.length; i++) {
+		var masterScheduleItem = masterScheduleDay[i];
+		participantScheduleDay.push(masterScheduleItem);
+		if (masterScheduleItem.type == 'class') {
+			var start = masterScheduleItem.rowNumber;
+			var end = i == masterScheduleDay.length - 1 ? scheduleCSVObject.length - 1 : masterScheduleDay[i+1].rowNumber;
+			for (var j = start; j < end; j++) {
+				for (var column = 0; column < 37; column++) {
+					if (scheduleCSVObject[j][column] == participantCode) {
+						var roomIndex = Math.floor(column/9);
+						participantScheduleDay[i].participantInRoomNum = roomIndex;
+					}
+				}
+			}
 		}
-	});
-};
+	}
+	return participantScheduleDay;
+}
+
+var getParticipantSchedule = function(scheduleCSVObject, masterSchedule, participantCode) {
+	var participantSchedule = {
+		thursday: getParticipantScheduleDay(scheduleCSVObject, masterSchedule.thursday, participantCode), 
+		friday: getParticipantScheduleDay(scheduleCSVObject, masterSchedule.friday, participantCode), 
+		saturday: getParticipantScheduleDay(scheduleCSVObject, masterSchedule.saturday, participantCode), 
+		sunday: getParticipantScheduleDay(scheduleCSVObject, masterSchedule.sunday, participantCode)
+	};
+	return participantSchedule;
+}
 
 var readOffDay = function(scheduleCSVObject, dayLabel, stopAt) {
 	var row = 0;
@@ -368,19 +433,21 @@ var readOffDay = function(scheduleCSVObject, dayLabel, stopAt) {
 			}
 
 			daySchedule.push(scheduleItem);
+			scheduleItem.rowNumber = row;
 		}
 		if (is5MinClassChange(cell1)) {
 			scheduleItem = {
 				type: '5MinClassChange'
 			}
 			daySchedule.push(scheduleItem);
+			scheduleItem.rowNumber = row;
 		}
-		
-		row++;
 		if (scheduleItem) {
 			lastLastScheduleItem = lastScheduleItem;
 			lastScheduleItem = scheduleItem;
 		}
+		
+		row++;
 	}
 
 	return daySchedule;
@@ -397,9 +464,33 @@ var getMasterSchedule = function(scheduleCSVObject) {
 	return schedule;
 };
 
+var getParticipantCodes = function() {
+	return "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890".split('').map(function(char) {
+		return 'P' + char;
+	});
+}
+
+var loadCSVandDrawEverything = function(canvas) {
+	$.ajax({
+		type: "GET",
+		url: "master_schedule.csv",
+		dataType: "text",
+		success: function(data) {
+			var scheduleCSVObject = $.csv.toObjects(data);
+			var masterSchedule = getMasterSchedule(scheduleCSVObject);
+
+			//drawMasterSchedule(canvas, masterSchedule);
+
+			var participantCodes = getParticipantCodes();
+			for (var i = 0; i < participantCodes.length; i++) {
+				var participantSchedule = getParticipantSchedule(scheduleCSVObject, masterSchedule, participantCodes[i]);
+				drawParticipantSchedule(canvas, participantSchedule, i, participantCodes[i]);
+			}
+		}
+	});
+};
+
 $(function () {
     var canvas = getCanvas();
-    drawBackground(canvas);
-
-    loadCSV(canvas);
+    loadCSVandDrawEverything(canvas);
 });
