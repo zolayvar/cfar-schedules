@@ -74,7 +74,7 @@ var getBodyWidth = function() {
 }
 
 var getRoomFontSize = function() {
-	return getPageWidth()/400 * 13;
+	return getPageWidth()/1085 * 32;
 }
 
 var getRoomHeadersExtraSpacer = function() {
@@ -170,7 +170,7 @@ var drawBackground = function(canvas, participantNumber) {
 var drawRoomHeader = function(canvas, x, text, dayNumber, participantNumber) {
 	drawFaintOrangeRect(canvas, x - getRoomWidth()/2, getBodyStartY(dayNumber, participantNumber), getRoomWidth(), getRoomHeight());
 	var text = canvas.text(x, getBodyStartY(dayNumber, participantNumber) + getRoomHeight()/2, text);
-	text.attr({fill: 'white', 'font-weight': '500', 'font-size': getRoomFontSize()})
+	text.attr({fill: 'white', 'font-weight': 'bold', 'font-size': getRoomFontSize()})//, 'font-family': 'Arial, sans-serif'})
 }
 
 var drawRoomHeaders = function(canvas, num, dayNumber, participantNumber) {
@@ -180,11 +180,11 @@ var drawRoomHeaders = function(canvas, num, dayNumber, participantNumber) {
 }
 
 var drawFaintOrangeRect = function(canvas, x, y, w, h) {
-	canvas.rect(x, y, w, h).attr({fill: 'orange', stroke: 'none'});
+	canvas.rect(x, y, w, h).attr({fill: '#fbbc75', stroke: 'none'});
 }
 
 var drawRowTime = function(canvas, row, cursor) {
-	var cursor = row.type == 'lunch' ? cursor + getTimeLabelSpacer()*.5 : cursor;
+	var cursor = row.type == 'lunch' ? cursor + getTimeLabelSpacer()*.75 : cursor;
 	var color = getTimeColor(row);
 
 	// First, draw the start time.
@@ -195,7 +195,7 @@ var drawRowTime = function(canvas, row, cursor) {
 
 	// Then, draw the end time.
 	canvas.text(getTimeLabelEndX(), cursor + getTimeLabelSpacer() + getTimeStartFontSize() + getTimeEndFontSize()/2, '- ' + row.timeEnd)
-		.attr({fill: color, 'text-anchor': 'end', 'font-weight': '600', 'font-size': getTimeEndFontSize(), opacity: '.7'});
+		.attr({fill: color, 'text-anchor': 'end', 'font-weight': '600', 'font-size': getTimeEndFontSize(), opacity: (color == 'white' ? '1' :'.5')});
 }
 
 var drawMealText = function(canvas, row, cursor) {
@@ -223,13 +223,22 @@ var drawClassName = function(canvas, classTitle, teacher, cursorY, xCoord, blobP
 
 	// Draw the pulsing blue light
 	if (blobPredecessorPosition) {
-		canvas.path('M' + blobPredecessorPosition.x + ',' + blobPredecessorPosition.y + 'L' + xCoord + ',' + centerY)
-			.attr({stroke: 'lightblue', 'stroke-width': '10'}).toFront();
+		if (!blobPredecessorPosition.justDrewTheSwoosh) {
+			canvas.path('M' + blobPredecessorPosition.x + ',' + blobPredecessorPosition.y + 'L' + xCoord + ',' + centerY)
+				.attr({stroke: '#c1f1fa', 'stroke-width': '15'}).toBack();
+			if (classTitle.indexOf('utoring') != -1) {
+				swoosh = canvas.image('swoosh.png', xCoord, centerY - 7.5, 650, 170).toFront();
+				blobPredecessorPosition.justDrewTheSwoosh = true;
+			} 
+		} else {
+			blobPredecessorPosition.justDrewTheSwoosh = false;
+		}
 		blobPredecessorPosition.x = xCoord;
 		blobPredecessorPosition.y = centerY;
-	}
+	}	
+
 	canvas.circle(xCoord, centerY, getClassNameFontSize()*1.2)
-		.attr({fill: 'rlightblue-white', stroke: 'none', opacity: .5}).toBack();
+		.attr({fill: '#c1f1fa', stroke: 'none'}).toBack();
 
 	// Draw the class name
 	var linebroke = false;
@@ -274,11 +283,12 @@ var drawScheduleRow = function(canvas, row, cursor, blobPredecessorPosition) {
 		drawRowTime(canvas, row, cursor);
 		drawClassNames(canvas, row, cursor, blobPredecessorPosition);
 	} else if (row.type == 'lunch') {
-		drawFaintOrangeRect(canvas, getStartOfBlueBar(), cursor, getLunchWidth(), getLunchRowHeight());
+		canvas.image('mealbar.png', getStartOfBlueBar(), cursor, getLunchWidth(), getLunchRowHeight());
 		drawMealText(canvas, row, cursor);
 		drawRowTime(canvas, row, cursor);
 	} else if (row.type == 'dinner') {
-		drawFaintOrangeRect(canvas, getStartOfBlueBar(), cursor, getDinnerWidth(), getDinnerRowHeight());
+		var barWidth = row.specialText.indexOf('fterparty') > -1 ? getDinnerWidth()*.8 : getDinnerWidth();
+		canvas.image('mealbar.png', getStartOfBlueBar(), cursor, barWidth, getDinnerRowHeight())
 		drawMealText(canvas, row, cursor);
 		drawRowTime(canvas, row, cursor);
 	} else if (row.type == '5MinClassChange') {
@@ -295,17 +305,17 @@ var drawAllRoomHeaders = function(canvas, participantNumber) {
 }
 
 var drawMasterScheduleDay = function(canvas, masterDaySchedule, dayNumber) {
-	var cursor = getBodyStartY(dayNumber) + getRoomHeight() + getSpacerHeightBetweenRoomHeadersAndFirstClass();
+	var cursor = getBodyStartY(dayNumber, 0) + getRoomHeight() + getSpacerHeightBetweenRoomHeadersAndFirstClass();
 	for (var i = 0; i < masterDaySchedule.length; i++) {
-		cursor = drawScheduleRow(canvas, masterDaySchedule[i], cursor);
+		cursor = drawScheduleRow(canvas, masterDaySchedule[i], cursor, 0);
 	}
 }
 
 var drawMasterSchedule = function(canvas, masterSchedule) {
-	drawBackground(canvas);
+	drawBackground(canvas, 0);
 
 	// First, draw the room names
-	drawAllRoomHeaders(canvas);
+	drawAllRoomHeaders(canvas, 0);
 
 	drawMasterScheduleDay(canvas, masterSchedule.thursday, 0);
 	drawMasterScheduleDay(canvas, masterSchedule.friday, 1);
@@ -327,9 +337,9 @@ var drawParticipantScheduleDay = function(canvas, participantScheduleDay, dayNum
 var drawParticipantCodes = function(canvas, participantNumber, participantCode) {
 	var x = getPageWidth() - 20;
 	for (var i = 0; i < 4; i++) {
-		var y = (getPageHeight()*4*participantNumber) + getPageHeight()*i + getPageHeight() - 20 - 18;
-		canvas.text(x, y, participantCode + ' ' + (i+1))
-			.attr({'text-anchor': 'end', fill: 'brown', 'font-size': '36', 'font-weight': '700'});
+		var y = (getPageHeight()*4*participantNumber) + getPageHeight()*i + getPageHeight() - 20 - 30;
+		canvas.text(x, y, participantCode + ' ' + (i+1) + '\nApril 2017')
+			.attr({'text-anchor': 'end', fill: '#bd7526', 'font-size': '30', 'font-weight': '700'});
 	}
 }
 
