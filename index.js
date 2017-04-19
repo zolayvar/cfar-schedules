@@ -188,7 +188,8 @@ var drawRowTime = function(canvas, row, cursor) {
 	var color = getTimeColor(row);
 
 	// First, draw the start time.
-	canvas.text(getTimeLabelEndX(), cursor + getTimeLabelSpacer() + getTimeStartFontSize()/2, row.timeStart)
+	var startTimeY = row.timeEnd ? cursor + getTimeLabelSpacer() + getTimeStartFontSize()/2 : cursor + getTimeStartFontSize()*1.25;
+	canvas.text(getTimeLabelEndX(), startTimeY, row.timeStart)
 		.attr({fill: color, 'text-anchor': 'end', 'font-weight': '600', 'font-size': getTimeStartFontSize()});
 
 	if (!row.timeEnd) {return}
@@ -215,10 +216,10 @@ var getRowHeight = function(row) {
 	} else if (row.type == '5MinClassChange') {
 		return get5MinClassChangeHeight();
 	}
-	console.log('unknown row height');
+	console.log('unknown row height', row);
 }
 
-var drawClassName = function(canvas, classTitle, teacher, cursorY, xCoord, blobPredecessorPosition) {
+var drawClassName = function(canvas, classTitle, teacher, cursorY, xCoord, blobPredecessorPosition, isForParticipantSchedule) {
 	var centerY = cursorY + getClassRowHeight()/2;
 
 	// Draw the pulsing blue light
@@ -256,15 +257,18 @@ var drawClassName = function(canvas, classTitle, teacher, cursorY, xCoord, blobP
 			}
 		}
 	}
-	canvas.text(xCoord, centerY - getClassNameFontSize()/2, classTitle)
+	var classNameY = isForParticipantSchedule ? centerY : centerY - getClassNameFontSize()/2;
+	canvas.text(xCoord, classNameY, classTitle)
 		.attr({'font-weight': '600', 'font-size': getClassNameFontSize()}).toFront();
 
 	// Draw the teacher name
-	canvas.text(xCoord, centerY + getTeacherFontSize()/2 + (linebroke ? getClassNameFontSize()*.75 : 0), teacher)
-		.attr({'font-weight': '600', 'font-size': getTeacherFontSize(), opacity: '.7'}).toFront();
+	if (!isForParticipantSchedule) {
+		canvas.text(xCoord, centerY + getTeacherFontSize()/2 + (linebroke ? getClassNameFontSize()*.75 : 0), teacher)
+			.attr({'font-weight': '600', 'font-size': getTeacherFontSize(), opacity: '.7'}).toFront();
+	}
 };
 
-var drawClassNames = function(canvas, row, cursor, blobPredecessorPosition) {
+var drawClassNames = function(canvas, row, cursor, blobPredecessorPosition, isForParticipantSchedule) {
 	for (var i = 0; i < row.classes.length; i++) {
 		if (row.participantInRoomNum >= 0 && i != row.participantInRoomNum) {
 			continue;
@@ -272,16 +276,16 @@ var drawClassNames = function(canvas, row, cursor, blobPredecessorPosition) {
 		var classData = row.classes[i];
 		var className = classData.split('(')[0].trim();
 		var teacher = classData.indexOf('(') == -1 ? '' : classData.split('(')[1].split(')')[0].trim();
-		drawClassName(canvas, className, teacher, cursor, getXColCoord(4, i), blobPredecessorPosition);
+		drawClassName(canvas, className, teacher, cursor, getXColCoord(4, i), blobPredecessorPosition, isForParticipantSchedule);
 	}
 }
 
-var drawScheduleRow = function(canvas, row, cursor, blobPredecessorPosition) {
+var drawScheduleRow = function(canvas, row, cursor, blobPredecessorPosition, isForParticipantSchedule) {
 	if (row.type == 'break') {
 		drawFaintOrangeRect(canvas, getStartOfBlueBar(), cursor, getBlueBarWidth(), getBreakRowHeight());
 	} else if (row.type == 'class') {
 		drawRowTime(canvas, row, cursor);
-		drawClassNames(canvas, row, cursor, blobPredecessorPosition);
+		drawClassNames(canvas, row, cursor, blobPredecessorPosition, isForParticipantSchedule);
 	} else if (row.type == 'lunch') {
 		canvas.image('mealbar.png', getStartOfBlueBar(), cursor, getLunchWidth(), getLunchRowHeight());
 		drawMealText(canvas, row, cursor);
@@ -296,6 +300,10 @@ var drawScheduleRow = function(canvas, row, cursor, blobPredecessorPosition) {
 	}
 
 	return cursor + getRowHeight(row)
+}
+
+var drawParticipantScheduleRow = function(canvas, row, cursor, blobPredecessorPosition) {
+	return drawScheduleRow(canvas, row, cursor, blobPredecessorPosition, true);
 }
 
 var drawAllRoomHeaders = function(canvas, participantNumber) {
@@ -330,7 +338,7 @@ var drawParticipantScheduleDay = function(canvas, participantScheduleDay, dayNum
 		y: cursor + getClassRowHeight()/2
 	};
 	for (var i = 0; i < participantScheduleDay.length; i++) {
-		cursor = drawScheduleRow(canvas, participantScheduleDay[i], cursor, blobPredecessorPosition);
+		cursor = drawParticipantScheduleRow(canvas, participantScheduleDay[i], cursor, blobPredecessorPosition);
 	}
 }
 
@@ -365,7 +373,7 @@ var getParticipantScheduleDay = function(scheduleCSVObject, masterScheduleDay, p
 			for (var j = start; j < end; j++) {
 				for (var column = 0; column < 37; column++) {
 					if (scheduleCSVObject[j][column] == participantCode) {
-						var roomIndex = Math.floor(column/9);
+						var roomIndex = Math.floor((column-1)/9);
 						participantScheduleDay[i].participantInRoomNum = roomIndex;
 					}
 				}
@@ -492,7 +500,8 @@ var loadCSVandDrawEverything = function(canvas) {
 			//drawMasterSchedule(canvas, masterSchedule);
 
 			var participantCodes = getParticipantCodes();
-			for (var i = 0; i < participantCodes.length; i++) {
+			var max_draw = 4;
+			for (var i = 0; i < Math.min(participantCodes.length, max_draw); i++) {
 				var participantSchedule = getParticipantSchedule(scheduleCSVObject, masterSchedule, participantCodes[i]);
 				drawParticipantSchedule(canvas, participantSchedule, i, participantCodes[i]);
 			}
